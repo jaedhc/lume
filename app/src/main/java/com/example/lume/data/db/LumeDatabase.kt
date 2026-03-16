@@ -9,7 +9,7 @@ import kotlinx.coroutines.launch
 
 @Database(
     entities = [TransactionEntity::class, CategoryEntity::class, AccountEntity::class, DeferredPlanEntity::class, AccountTypeEntity::class],
-    version = 5,
+    version = 8,
     exportSchema = false
 )
 abstract class LumeDatabase : RoomDatabase() {
@@ -57,7 +57,7 @@ abstract class LumeDatabase : RoomDatabase() {
                     "('transporte', 'Transporte', 'DirectionsCar', '#60A5FA', 1)",
                     "('entretenimiento', 'Entretenimiento', 'ConfirmationNumber', '#A78BFA', 2)",
                     "('salud', 'Salud', 'MedicalServices', '#F87171', 3)",
-                    "('finanzas', 'Finanzas', 'Payments', '#34D399', 4)",
+                    "('finanzas', 'Finanzas', 'SwapHoriz', '#FFB800', 4)",
                     "('servicios', 'Servicios', 'Lightbulb', '#FB923C', 5)",
                     "('otros', 'Otros', 'Category', '#94A3B8', 6)"
                 )

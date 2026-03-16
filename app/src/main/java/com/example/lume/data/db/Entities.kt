@@ -100,10 +100,20 @@ data class TransactionEntity(
     val concept: String?,
     val categoryId: String,
     val accountId: String?,
-    val type: String, // "ingreso" or "egreso"
+    val type: String,           // "ingreso" or "egreso"
     val isSubscription: Boolean,
     val note: String?,
-    val deferredPlanId: String? = null, // Link to DeferredPlanEntity if applicable
+    /**
+     * Only meaningful for CREDIT card transactions imported from a statement.
+     * true  = transaction belongs to a previous billing cycle (already paid, not current debt)
+     * false = current cycle debt, or any non-credit transaction (debit/cash/savings/investment)
+     */
+    val isPaid: Boolean = false,
+    val deferredPlanId: String? = null,
+    val usedAi: Boolean = false,
+    val msiInstallment: Int? = null,
+    val msiTotal: Int? = null,
+    val isFuturePayment: Boolean = false,
     val createdAt: Long = System.currentTimeMillis()
 )
 

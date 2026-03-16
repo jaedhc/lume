@@ -25,8 +25,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.lume.data.OcrResult
-import com.example.lume.ui.components.ActiveGold
-import com.example.lume.ui.components.BackgroundDark
+import com.example.lume.ui.theme.ActiveGold
+import com.example.lume.ui.theme.BackgroundDark
 import com.example.lume.ui.theme.SurfaceDark
 import com.example.lume.ui.theme.TextGray
 import com.example.lume.viewmodel.ShareReceiverUiState
@@ -64,6 +64,7 @@ fun ShareReceiverScreen(
 
     LaunchedEffect(Unit) {
         viewModel.saveSuccess.collect {
+            // 'it' is the number of saved transactions (Int)
             onDone()
         }
     }
@@ -244,6 +245,7 @@ fun TransactionForm(
 ) {
     var transactionType by remember { mutableStateOf(result.fields.type ?: "egreso") }
     var isSubscription by remember { mutableStateOf(result.fields.is_subscription) }
+    var concept by remember { mutableStateOf(result.fields.concept ?: result.fields.merchant ?: "") }
     var note by remember { mutableStateOf("") }
 
     val categories by viewModel.categories.collectAsState(initial = emptyList())
@@ -256,22 +258,40 @@ fun TransactionForm(
 
     // Form State
     var amountStr by remember { mutableStateOf(result.fields.amount?.let { if (it > 0) it.toString() else "" } ?: "") }
-    var msiStr by remember { mutableStateOf(result.fields.msi?.toString() ?: "") }
+    var msiTotalStr by remember { mutableStateOf(result.fields.msi_total?.toString() ?: result.fields.msi?.toString() ?: "") }
+    var msiCurrentStr by remember { mutableStateOf(result.fields.msi_current?.toString() ?: "1") }
     
     val formattedAmount = remember(amountStr) { 
         val currentAmount = amountStr.toDoubleOrNull() ?: 0.0
         NumberFormat.getCurrencyInstance(Locale.US).format(currentAmount) 
     }
 
-    // OCR Detected Badge
-    Box(
-        modifier = Modifier
-            .background(Color(0xFF2A2A1E), RoundedCornerShape(20.dp))
-            .padding(horizontal = 12.dp, vertical = 6.dp)
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = ActiveGold, modifier = Modifier.size(12.dp))
-            Text("OCR DETECTADO", color = ActiveGold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+    // Badges
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        // OCR Detected Badge
+        Box(
+            modifier = Modifier
+                .background(Color(0xFF2A2A1E), RoundedCornerShape(20.dp))
+                .padding(horizontal = 12.dp, vertical = 6.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = ActiveGold, modifier = Modifier.size(12.dp))
+                Text("OCR DETECTADO", color = ActiveGold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+
+        if (result.usedAi) {
+            // AI Powered Badge
+            Box(
+                modifier = Modifier
+                    .background(Color(0xFF1E242E), RoundedCornerShape(20.dp))
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Icon(Icons.Default.Psychology, contentDescription = null, tint = Color(0xFFB894FF), modifier = Modifier.size(12.dp))
+                    Text("LUME AI CLASIFICADO", color = Color(0xFFB894FF), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                }
+            }
         }
     }
 
@@ -282,8 +302,9 @@ fun TransactionForm(
     }
 
     // Insight Chip (MI)
-    val msi = result.fields.msi
-    if (msi != null && msi > 0) {
+    val msiTotal = msiTotalStr.toIntOrNull() ?: 0
+    val msiCurrent = msiCurrentStr.toIntOrNull() ?: 1
+    if (msiTotal > 1) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -292,8 +313,8 @@ fun TransactionForm(
             contentAlignment = Alignment.Center
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.CalendarToday, contentDescription = null, tint = Color(0xFF608BC1))
-                Text("$msi Meses sin intereses detectados", color = Color(0xFF608BC1), fontWeight = FontWeight.Medium)
+                Icon(Icons.Default.CreditCard, contentDescription = null, tint = Color(0xFFB894FF))
+                Text("Pago a $msiTotal MSI ($msiCurrent/$msiTotal)", color = Color(0xFFB894FF), fontWeight = FontWeight.Medium)
             }
         }
     }
@@ -308,14 +329,14 @@ fun TransactionForm(
         modifier = Modifier.fillMaxWidth().padding(start = 4.dp)
     )
 
-    if (msi != null && msi > 0) {
+    if (msiTotal > 1) {
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.fillMaxWidth()) {
             OutlinedTextField(
-                value = amountStr,
-                onValueChange = { if (it.isEmpty() || it.matches(Regex("^\\d*\\.?\\d{0,2}\$"))) amountStr = it },
+                value = msiCurrentStr,
+                onValueChange = { if (it.isEmpty() || it.matches(Regex("^\\d{0,2}\$"))) msiCurrentStr = it },
                 modifier = Modifier.weight(1f),
-                label = { Text("Monto", color = TextGray) },
-                leadingIcon = { Icon(Icons.Default.AttachMoney, contentDescription = null, tint = TextGray) },
+                label = { Text("Pago No.", color = TextGray) },
+                leadingIcon = { Icon(Icons.Default.Tag, contentDescription = null, tint = TextGray) },
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = Color.Transparent,
                     unfocusedBorderColor = Color.Transparent,
@@ -323,18 +344,21 @@ fun TransactionForm(
                     unfocusedContainerColor = SurfaceDark,
                     focusedTextColor = Color.White,
                     unfocusedTextColor = Color.White,
-                    cursorColor = ActiveGold
+                    cursorColor = ActiveGold,
+                    focusedLabelColor = ActiveGold,
+                    unfocusedLabelColor = TextGray,
+                    disabledLabelColor = TextGray
                 ),
                 shape = RoundedCornerShape(16.dp),
-                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal),
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
                 singleLine = true
             )
 
             OutlinedTextField(
-                value = msiStr,
-                onValueChange = { if (it.isEmpty() || it.matches(Regex("^\\d{0,2}\$"))) msiStr = it },
+                value = msiTotalStr,
+                onValueChange = { if (it.isEmpty() || it.matches(Regex("^\\d{0,2}\$"))) msiTotalStr = it },
                 modifier = Modifier.weight(1f),
-                label = { Text("Meses", color = TextGray) },
+                label = { Text("de Total Meses", color = TextGray) },
                 leadingIcon = { Icon(Icons.Default.CalendarToday, contentDescription = null, tint = TextGray) },
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = Color.Transparent,
@@ -343,7 +367,10 @@ fun TransactionForm(
                     unfocusedContainerColor = SurfaceDark,
                     focusedTextColor = Color.White,
                     unfocusedTextColor = Color.White,
-                    cursorColor = ActiveGold
+                    cursorColor = ActiveGold,
+                    focusedLabelColor = ActiveGold,
+                    unfocusedLabelColor = TextGray,
+                    disabledLabelColor = TextGray
                 ),
                 shape = RoundedCornerShape(16.dp),
                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
@@ -395,7 +422,8 @@ fun TransactionForm(
     }
 
     // Subscription Toggle
-    if (msi == null || msi <= 0) {
+    // Only show subscription toggle if NOT MSI
+    if (msiTotal <= 1) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -432,17 +460,40 @@ fun TransactionForm(
     }
 
     OutlinedTextField(
+        value = concept,
+        onValueChange = { concept = it },
+        modifier = Modifier.fillMaxWidth(),
+        label = { Text("Concepto", color = TextGray) },
+        placeholder = { Text("Nombre del comercio o concepto...", color = TextGray) },
+        leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null, tint = TextGray) },
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = Color.Transparent,
+            unfocusedBorderColor = Color.Transparent,
+            focusedContainerColor = SurfaceDark,
+            unfocusedContainerColor = SurfaceDark,
+            cursorColor = ActiveGold,
+            focusedTextColor = Color.White,
+            unfocusedTextColor = Color.White
+        ),
+        shape = RoundedCornerShape(16.dp),
+        singleLine = true
+    )
+
+    OutlinedTextField(
         value = note,
         onValueChange = { note = it },
         modifier = Modifier.fillMaxWidth().height(100.dp),
-        placeholder = { Text("Agregar una nota sobre esta transacción...", color = TextGray) },
+        label = { Text("Nota (opcional)", color = TextGray) },
+        placeholder = { Text("Agregar una nota adicional...", color = TextGray) },
         leadingIcon = { Icon(Icons.Default.Notes, contentDescription = null, tint = TextGray) },
         colors = OutlinedTextFieldDefaults.colors(
             focusedBorderColor = Color.Transparent,
             unfocusedBorderColor = Color.Transparent,
             focusedContainerColor = SurfaceDark,
             unfocusedContainerColor = SurfaceDark,
-            cursorColor = ActiveGold
+            cursorColor = ActiveGold,
+            focusedTextColor = Color.White,
+            unfocusedTextColor = Color.White
         ),
         shape = RoundedCornerShape(16.dp)
     )
@@ -450,8 +501,9 @@ fun TransactionForm(
     Button(
         onClick = { 
             val editedAmount = amountStr.toDoubleOrNull() ?: 0.0
-            val editedMsi = msiStr.toIntOrNull()
-            viewModel.saveTransaction(result, transactionType, isSubscription, note, editedAmount, editedMsi) 
+            val editedMsiTotal = msiTotalStr.toIntOrNull()
+            val editedMsiCurrent = msiCurrentStr.toIntOrNull()
+            viewModel.saveTransaction(result, transactionType, isSubscription, note, editedAmount, concept, editedMsiTotal, editedMsiCurrent) 
         },
         colors = ButtonDefaults.buttonColors(containerColor = ActiveGold),
         shape = RoundedCornerShape(16.dp),

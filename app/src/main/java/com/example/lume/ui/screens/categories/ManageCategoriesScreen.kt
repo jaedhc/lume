@@ -30,8 +30,8 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import com.example.lume.data.db.CategoryEntity
-import com.example.lume.ui.components.ActiveGold
-import com.example.lume.ui.components.BackgroundDark
+import com.example.lume.ui.theme.ActiveGold
+import com.example.lume.ui.theme.BackgroundDark
 import com.example.lume.ui.navigation.Screen
 import com.example.lume.ui.theme.SurfaceDark
 import com.example.lume.ui.theme.TextGray

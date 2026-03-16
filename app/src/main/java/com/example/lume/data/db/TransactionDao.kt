@@ -36,6 +36,9 @@ interface TransactionDao {
     @Query("SELECT * FROM deferred_plans WHERE status = 'ACTIVE'")
     fun getActiveDeferredPlans(): Flow<List<DeferredPlanEntity>>
 
+    @Query("SELECT * FROM deferred_plans WHERE status = 'ACTIVE'")
+    suspend fun getActiveDeferredPlansSnapshot(): List<DeferredPlanEntity>
+
     @Query("SELECT * FROM deferred_plans WHERE transactionId = :txId")
     suspend fun getDeferredPlanByTransactionId(txId: String): DeferredPlanEntity?
 
@@ -51,8 +54,8 @@ interface TransactionDao {
     @Query("SELECT * FROM categories")
     suspend fun getCategoriesSnapshot(): List<CategoryEntity>
 
-    @Query("SELECT * FROM accounts WHERE id = :id")
-    suspend fun getAccountById(id: String): AccountEntity?
+    @Query("SELECT * FROM accounts WHERE id = :id LIMIT 1")
+    suspend fun getAccountById(id: String?): AccountEntity?
 
     @Query("UPDATE accounts SET balance = balance + :delta WHERE id = :accountId")
     suspend fun updateAccountBalance(accountId: String, delta: Double)
@@ -80,7 +83,9 @@ interface TransactionDao {
         // 1. Insert the transaction
         insertTransaction(transaction)
 
-        // 2. Update account balance if accountId is provided
+        // 2. Update account balance if accountId is provided AND it's not a future payment
+        if (transaction.isFuturePayment) return
+
         val accountId = transaction.accountId
         if (accountId != null) {
             val account = getAccountById(accountId) ?: return
@@ -108,8 +113,95 @@ interface TransactionDao {
         }
     }
 
+    @Transaction
+    suspend fun deleteTransactionWithBalanceUpdate(transaction: TransactionEntity) {
+        // 1. Delete the transaction
+        deleteTransaction(transaction)
+
+        // 2. Reverse account balance if accountId is provided AND it's not a future payment
+        if (transaction.isFuturePayment) return
+
+        val accountId = transaction.accountId
+        if (accountId != null) {
+            val account = getAccountById(accountId) ?: return
+            
+            // Logic: Reverse of the insert logic
+            val isEgreso = transaction.type == "egreso"
+            val isCredit = account.accountTypeId == "CREDIT"
+            
+            val delta = when {
+                isEgreso && !isCredit -> transaction.amount // Reversed: add back
+                isEgreso && isCredit -> -transaction.amount // Reversed: subtract debt
+                !isEgreso && !isCredit -> -transaction.amount // Reversed: subtract from balance
+                !isEgreso && isCredit -> transaction.amount // Reversed: add to debt
+                else -> 0.0
+            }
+            
+            if (delta != 0.0) {
+                updateAccountBalance(accountId, delta)
+            }
+        }
+    }
+
     @Delete
     suspend fun deleteTransaction(transaction: TransactionEntity)
+
+    @Update
+    suspend fun updateTransaction(transaction: TransactionEntity)
+
+    @Transaction
+    suspend fun updateTransactionWithBalanceUpdate(oldTransaction: TransactionEntity, newTransaction: TransactionEntity) {
+        // 1. Update the transaction
+        updateTransaction(newTransaction)
+
+        // 2. We handle balance changes by conceptually "deleting" the old one and "inserting" the new one
+        if (oldTransaction.accountId != newTransaction.accountId) {
+            // If the account changed, reverse from old account and add to new account
+            oldTransaction.accountId?.let {
+                reverseBalance(it, oldTransaction.amount, oldTransaction.type)
+            }
+            newTransaction.accountId?.let {
+                applyBalance(it, newTransaction.amount, newTransaction.type)
+            }
+        } else {
+            // Same account, just calculate the net difference
+            // We reverse the old, add the new
+            oldTransaction.accountId?.let {
+                reverseBalance(it, oldTransaction.amount, oldTransaction.type)
+                applyBalance(it, newTransaction.amount, newTransaction.type)
+            }
+        }
+    }
+
+    private suspend fun reverseBalance(accountId: String, amount: Double, type: String) {
+        val account = getAccountById(accountId) ?: return
+        val isEgreso = type == "egreso"
+        val isCredit = account.accountTypeId == "CREDIT"
+        
+        val delta = when {
+            isEgreso && !isCredit -> amount 
+            isEgreso && isCredit -> -amount 
+            !isEgreso && !isCredit -> -amount 
+            !isEgreso && isCredit -> amount 
+            else -> 0.0
+        }
+        if (delta != 0.0) updateAccountBalance(accountId, delta)
+    }
+
+    private suspend fun applyBalance(accountId: String, amount: Double, type: String) {
+        val account = getAccountById(accountId) ?: return
+        val isEgreso = type == "egreso"
+        val isCredit = account.accountTypeId == "CREDIT"
+        
+        val delta = when {
+            isEgreso && !isCredit -> -amount
+            isEgreso && isCredit -> amount
+            !isEgreso && !isCredit -> amount
+            !isEgreso && isCredit -> -amount
+            else -> 0.0
+        }
+        if (delta != 0.0) updateAccountBalance(accountId, delta)
+    }
 
     @Delete
     suspend fun deleteDeferredPlan(plan: DeferredPlanEntity)
@@ -117,8 +209,74 @@ interface TransactionDao {
     @Query("DELETE FROM transactions WHERE accountId = :accountId")
     suspend fun deleteTransactionsByAccountId(accountId: String)
 
+    /**
+     * Sums unpaid egreso transactions for a specific account.
+     * Use ONLY for CREDIT accounts — for all other types isPaid is always false
+     * and this would return the full transaction sum.
+     */
+    @Query("SELECT COALESCE(SUM(amount), 0.0) FROM transactions WHERE accountId = :accountId AND type = 'egreso' AND isPaid = 0")
+    suspend fun getPendingCreditDebt(accountId: String): Double
+
     @Query("DELETE FROM accounts WHERE id = :accountId")
     suspend fun deleteAccountById(accountId: String)
+
+    @Query("DELETE FROM transactions")
+    suspend fun deleteAllTransactions()
+
+    @Query("DELETE FROM accounts")
+    suspend fun deleteAllAccounts()
+
+    @Query("DELETE FROM deferred_plans")
+    suspend fun deleteAllDeferredPlans()
+
+    @Transaction
+    suspend fun clearAllUserData() {
+        deleteAllTransactions()
+        deleteAllAccounts()
+        deleteAllDeferredPlans()
+    }
+
+    @Transaction
+    @Query("SELECT * FROM transactions WHERE accountId = :accountId ORDER BY dateIso DESC, createdAt DESC")
+    fun getTransactionsByAccountFlow(accountId: String): kotlinx.coroutines.flow.Flow<List<TransactionWithCategory>>
+
+    @Query("UPDATE transactions SET isPaid = 1 WHERE id IN (:txIds)")
+    suspend fun markTransactionsAsPaid(txIds: List<String>)
+
+    @Transaction
+    suspend fun registerTdcPayment(
+        sourceAccountId: String,
+        tdcAccountId: String,
+        amount: Double,
+        txIdsToPay: List<String>,
+        dateIso: String,
+        note: String? = null
+    ) {
+        // 1. Mark target TDC transactions as paid
+        markTransactionsAsPaid(txIdsToPay)
+
+        // 2. Create the payment transaction (egreso from source account)
+        val tdcAccount = getAccountById(tdcAccountId)
+        val paymentTx = TransactionEntity(
+            id = java.util.UUID.randomUUID().toString(),
+            amount = amount,
+            currency = "MXN",
+            dateIso = dateIso,
+            merchant = "Pago TDC ${tdcAccount?.bankName ?: ""}",
+            concept = "Pago de Tarjeta de Crédito",
+            categoryId = "finanzas", // Assuming 'finanzas' exists as a seed
+            accountId = sourceAccountId,
+            type = "egreso",
+            isSubscription = false,
+            note = note,
+            isPaid = false // Non-TDC transaction
+        )
+        insertTransactionWithBalanceUpdate(paymentTx)
+
+        // 3. Update the TDC balance (reduce debt)
+        // Since it's a CREDIT account, reducing debt means subtracting from balance
+        updateAccountBalance(tdcAccountId, -amount)
+    }
 }
 
 data class AccountWithType(

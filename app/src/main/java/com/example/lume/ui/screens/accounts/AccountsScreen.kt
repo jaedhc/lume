@@ -24,8 +24,8 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import com.example.lume.data.db.AccountWithType
-import com.example.lume.ui.components.ActiveGold
-import com.example.lume.ui.components.BackgroundDark
+import com.example.lume.ui.theme.ActiveGold
+import com.example.lume.ui.theme.BackgroundDark
 import com.example.lume.ui.theme.SurfaceDark
 import com.example.lume.ui.theme.TextGray
 import com.example.lume.viewmodel.AccountGroup
@@ -43,13 +43,33 @@ fun AccountsScreen(
     Scaffold(
         containerColor = BackgroundDark,
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = { navController.navigate(com.example.lume.ui.navigation.Screen.SelectAccountType.route) },
-                containerColor = ActiveGold,
-                shape = CircleShape,
-                modifier = Modifier.padding(bottom = 80.dp) // Avoid overlap
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                modifier = Modifier.padding(bottom = 80.dp) // Avoid overlap with bottom nav
             ) {
-                Icon(Icons.Default.Add, contentDescription = "Add Account", tint = Color.Black)
+                // Secondary FAB for Transfers
+                androidx.compose.material3.Surface(
+                    onClick = { navController.navigate(com.example.lume.ui.navigation.Screen.TransferBetweenAccounts.route) },
+                    shape = CircleShape,
+                    color = SurfaceDark,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, ActiveGold.copy(alpha = 0.5f)),
+                    shadowElevation = 6.dp,
+                    modifier = Modifier.size(40.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                        Icon(Icons.Default.SwapHoriz, contentDescription = "Transfer", tint = ActiveGold)
+                    }
+                }
+
+                // Main FAB for Adding Account
+                FloatingActionButton(
+                    onClick = { navController.navigate(com.example.lume.ui.navigation.Screen.SelectAccountType.route) },
+                    containerColor = ActiveGold,
+                    shape = CircleShape
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "Add Account", tint = Color.Black)
+                }
             }
         },
         topBar = {
@@ -65,11 +85,19 @@ fun AccountsScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(24.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
                 contentPadding = PaddingValues(bottom = 120.dp)
             ) {
-                items(uiState.groups) { group ->
-                    AccountGroupSection(group, viewModel)
+                uiState.groups.forEach { group ->
+                    item {
+                        AccountGroupHeader(group)
+                    }
+                    items(group.accounts) { accountWithType ->
+                        AccountCard(accountWithType, viewModel, navController)
+                    }
+                    item {
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
                 }
             }
         }
@@ -108,31 +136,27 @@ fun AccountsHeader() {
 }
 
 @Composable
-fun AccountGroupSection(group: AccountGroup, viewModel: AccountsViewModel) {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(group.typeName, color = TextGray, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-            Text(
-                formatCurrency(group.totalBalance),
-                color = if (group.typeId == "CREDIT") Color(0xFFEF4444) else ActiveGold,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold
-            )
-        }
-        
-        group.accounts.forEach { accountWithType ->
-            AccountCard(accountWithType, viewModel)
-        }
+fun AccountGroupHeader(group: AccountGroup) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 4.dp, top = 8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(group.typeName, color = TextGray, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        Text(
+            formatCurrency(group.totalBalance),
+            color = if (group.typeId == "CREDIT") Color(0xFFEF4444) else ActiveGold,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Bold
+        )
     }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun AccountCard(accountWithType: AccountWithType, viewModel: AccountsViewModel) {
+fun AccountCard(accountWithType: AccountWithType, viewModel: AccountsViewModel, navController: NavHostController) {
     val account = accountWithType.account
     val type = accountWithType.type
     val accountColor = remember(account.color) {
@@ -172,7 +196,7 @@ fun AccountCard(accountWithType: AccountWithType, viewModel: AccountsViewModel) 
                     Text("Cancelar", color = TextGray)
                 }
             },
-            containerColor = com.example.lume.ui.theme.SurfaceDark
+            containerColor = SurfaceDark
         )
     }
     
@@ -180,7 +204,11 @@ fun AccountCard(accountWithType: AccountWithType, viewModel: AccountsViewModel) 
         modifier = Modifier
             .fillMaxWidth()
             .combinedClickable(
-                onClick = {},
+                onClick = {
+                    if (type?.id == "CREDIT") {
+                        navController.navigate("tdc_detail/${account.id}")
+                    }
+                },
                 onLongClick = { showDeleteDialog = true }
             )
             .then(if (showDeleteDialog) Modifier.border(1.dp, Color(0xFFEF4444), RoundedCornerShape(24.dp)) else Modifier),
@@ -257,9 +285,16 @@ fun AccountCard(accountWithType: AccountWithType, viewModel: AccountsViewModel) 
                     }
                 }
                 "INVESTMENT" -> {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Icon(Icons.Default.TrendingUp, contentDescription = null, tint = Color(0xFF22C55E), modifier = Modifier.size(12.dp))
-                        Text("+1.2% hoy", color = Color(0xFF22C55E), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Balance Total", color = TextGray, fontSize = 12.sp)
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Icon(Icons.Default.TrendingUp, contentDescription = null, tint = Color(0xFF22C55E), modifier = Modifier.size(12.dp))
+                            Text("+1.2% hoy", color = Color(0xFF22C55E), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             }

@@ -13,3 +13,9 @@ val Pink40 = Color(0xFF7D5260)
 val BackgroundDark = Color(0xFF0B0B0F)
 val SurfaceDark = Color(0xFF1E1E22) // Lighter than background for cards
 val TextGray = Color(0xFF9CA3AF)
+val ActiveGold = Color(0xFFFFB800)
+val InactiveGray = Color(0xFF64748B)
+
+val MsiPurple = Color(0xFFB894FF)
+val DeferredYellow = Color(0xFFFFB800)
+val PaidGreen = Color(0xFF2D9F24)

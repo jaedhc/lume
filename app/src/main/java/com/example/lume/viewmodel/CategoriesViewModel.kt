@@ -11,7 +11,8 @@ import kotlinx.coroutines.launch
 data class CategoriesUiState(
     val categories: List<CategoryEntity> = emptyList(),
     val searchQuery: String = "",
-    val isLoading: Boolean = true
+    val isLoading: Boolean = true,
+    val nameExistsError: Boolean = false
 )
 
 class CategoriesViewModel(application: Application) : AndroidViewModel(application) {
@@ -41,7 +42,9 @@ class CategoriesViewModel(application: Application) : AndroidViewModel(applicati
 
     private fun observeCategories() {
         viewModelScope.launch {
-            transactionDao.getAllCategories().collect { categories ->
+            transactionDao.getAllCategories().map { list ->
+                list.filter { it.id != "finanzas" }
+            }.collect { categories ->
                 _uiState.update { it.copy(categories = categories, isLoading = false) }
             }
         }
@@ -74,6 +77,12 @@ class CategoriesViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     fun saveCategory(name: String, icon: String, color: String) {
+        val exists = _uiState.value.categories.any { it.name.equals(name, ignoreCase = true) }
+        if (exists) {
+            _uiState.update { it.copy(nameExistsError = true) }
+            return
+        }
+
         viewModelScope.launch {
             val currentMaxOrder = _uiState.value.categories.maxOfOrNull { it.displayOrder } ?: -1
             val newCategory = CategoryEntity(
@@ -84,7 +93,12 @@ class CategoriesViewModel(application: Application) : AndroidViewModel(applicati
                 displayOrder = currentMaxOrder + 1
             )
             transactionDao.insertCategory(newCategory)
+            _uiState.update { it.copy(nameExistsError = false) }
             _saveSuccess.emit(Unit)
         }
+    }
+
+    fun clearErrors() {
+        _uiState.update { it.copy(nameExistsError = false) }
     }
 }

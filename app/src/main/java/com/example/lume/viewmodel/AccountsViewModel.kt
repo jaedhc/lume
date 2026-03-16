@@ -36,9 +36,31 @@ class AccountsViewModel(application: Application) : AndroidViewModel(application
 
     private fun observeAccounts() {
         viewModelScope.launch {
-            transactionDao.getAllAccountsWithType().collect { accounts ->
-                val newState = withContext(Dispatchers.Default) {
-                    val grouped = accounts.groupBy { it.type?.id ?: "OTHER" }
+            combine(
+                transactionDao.getAllAccountsWithType(),
+                transactionDao.getAllTransactions()
+            ) { accounts, transactions ->
+                // Overwrite CREDIT account balances dynamically with their pending debt
+                val updatedAccounts = accounts.map { accWithType ->
+                    if (accWithType.type?.id == "CREDIT") {
+                        val pendingDebt = transactions
+                            .filter { it.accountId == accWithType.account.id && it.type == "egreso" && !it.isPaid }
+                            .sumOf { it.amount }
+                        val credits = transactions
+                            .filter { it.accountId == accWithType.account.id && it.type == "ingreso" && !it.isPaid }
+                            .sumOf { it.amount }
+                            
+                        // Projected debt is pending expenses minus pending credits
+                        val netPending = (pendingDebt - credits).coerceAtLeast(0.0)
+                        
+                        accWithType.copy(account = accWithType.account.copy(balance = netPending))
+                    } else {
+                        accWithType
+                    }
+                }
+
+                withContext(Dispatchers.Default) {
+                    val grouped = updatedAccounts.groupBy { it.type?.id ?: "OTHER" }
                         .map { (typeId, list) ->
                             val typeName = list.firstOrNull()?.type?.name ?: "Otros"
                             // Calculate subtotal based on account type logic
@@ -58,6 +80,7 @@ class AccountsViewModel(application: Application) : AndroidViewModel(application
 
                     AccountsUiState(groups = grouped, isLoading = false)
                 }
+            }.collect { newState ->
                 _uiState.value = newState
             }
         }

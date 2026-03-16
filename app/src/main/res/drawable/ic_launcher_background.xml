@@ -3,26 +3,40 @@
     xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
-    android:viewportWidth="400"
-    android:viewportHeight="400">
-    <path android:pathData="M0,0h400v400h-400z">
+    android:viewportWidth="600"
+    android:viewportHeight="600">
+
+    <!-- Solid base background -->
+    <path
+        android:fillColor="#0B0E14"
+        android:pathData="M 0,0 L 600,0 L 600,600 L 0,600 Z" />
+
+    <!-- First light gradient (simulating blurred ellipse at 450, 37) -->
+    <path android:pathData="M 0,0 L 600,0 L 600,600 L 0,600 Z">
         <aapt:attr name="android:fillColor">
             <gradient
-                android:startX="200"
-                android:startY="0"
-                android:endX="200"
-                android:endY="400"
-                android:type="linear">
-                <item
-                    android:color="#FFB800"
-                    android:offset="0.217224" />
-                <item
-                    android:color="#FFCE4D"
-                    android:offset="0.572115" />
-                <item
-                    android:color="#FFBD11"
-                    android:offset="0.956731" />
+                android:centerX="450.697"
+                android:centerY="36.9999"
+                android:gradientRadius="400"
+                android:type="radial">
+                <item android:offset="0.0" android:color="#6B13203B"/>
+                <item android:offset="1.0" android:color="#0013203B"/>
             </gradient>
         </aapt:attr>
     </path>
+
+    <!-- Second light gradient (simulating blurred ellipse at 95, 453) -->
+    <path android:pathData="M 0,0 L 600,0 L 600,600 L 0,600 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:centerX="95.6968"
+                android:centerY="453.0"
+                android:gradientRadius="350"
+                android:type="radial">
+                <item android:offset="0.0" android:color="#293B2E13"/>
+                <item android:offset="1.0" android:color="#003B2E13"/>
+            </gradient>
+        </aapt:attr>
+    </path>
+
 </vector>

@@ -9,6 +9,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.Calendar
+import com.example.lume.data.mappers.TransactionMappers.enrichWithMsiAndClean
 
 data class CategorySpend(
     val category: CategoryEntity,
@@ -87,7 +89,9 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                                 accountId = null,
                                 type = "egreso",
                                 isSubscription = false,
-                                note = "Pago automático"
+                                note = "Pago automático",
+                                msiInstallment = plan.totalInstallments, // Placeholder or calculated?
+                                msiTotal = plan.totalInstallments
                             ),
                             category = originalTxWithCat.category
                         )
@@ -114,31 +118,50 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                         it.type?.id == "INVESTMENT" 
                     }.sumOf { it.account.currentValue ?: 0.0 }
 
-                    val tdcDebt = accountsWithType.filter { 
-                        it.type?.id == "CREDIT" 
-                    }.sumOf { it.account.balance } // Assuming balance store current debt for TDC
-
                     // Deduplicate Expenses: Exclude the massive parent transactions of Deferred Plans
                     val deferredTxIds = deferredPlans.map { it.transactionId }.toSet()
-                    val regularExpenses = transactions.filter { 
-                        it.transaction.type == "egreso" && it.transaction.id !in deferredTxIds 
-                    }
-
-                    val allExpensesList = regularExpenses + virtualInstallments
-                    val income = transactions.filter { it.transaction.type == "ingreso" }.sumOf { it.transaction.amount }
-                    val expenses = allExpensesList.sumOf { it.transaction.amount }
                     
-                    val breakdown = allExpensesList
-                        .filter { it.category != null }
-                        .groupBy { it.category!!.id } // Group by ID to merge identical categories with different references
+                    // Identify credit accounts
+                    val creditAccountIds = accountsWithType
+                        .filter { it.type?.id == "CREDIT" }
+                        .map { it.account.id }
+                        .toSet()
+
+                    // Split transactions into "Real Expenses" vs "Pending Debt"
+                    // Real Expenses: all non-credit accounts + PAID credit transactions
+                    // Pending Debt: UNPAID credit transactions (isPaid = false)
+                    val (pendingDebtTxns, realExpenseTxns) = transactions
+                        .filter { it.transaction.type == "egreso" && it.transaction.id !in deferredTxIds }
+                        .partition { 
+                            it.transaction.accountId in creditAccountIds && !it.transaction.isPaid 
+                        }
+
+                    val tdcDebtFromTxns = pendingDebtTxns.sumOf { it.transaction.amount }
+
+                    // Virtual installments shouldn't be real expenses either, they are projected debt until paid.
+                    // Real expenses = Cash/Debit/Savings purchases + Paid credit card transactions (payments)
+                    val income = transactions
+                        .filter { it.transaction.type == "ingreso" && it.transaction.categoryId != "finanzas" }
+                        .sumOf { it.transaction.amount }
+                    
+                    val expensesList = realExpenseTxns
+                    
+                    val expenses = expensesList
+                        .filter { it.transaction.categoryId != "finanzas" }
+                        .sumOf { it.transaction.amount }
+                    
+                    val allCategorizableExpensesList = expensesList + pendingDebtTxns + virtualInstallments
+                    
+                    val breakdown = allCategorizableExpensesList
+                        .filter { it.category != null && it.category!!.id != "finanzas" }
+                        .groupBy { it.category!!.id }
                         .map { (categoryId, list) -> 
                             // Use the first category instance found for this ID
                             CategorySpend(list.first().category!!, list.sumOf { it.transaction.amount }) 
                         }
                         .sortedByDescending { it.amount }
 
-                    // We do not add totalPlannedDebt to totalDebt because the credit card balance ALREADY includes it
-                    val totalDebt = tdcDebt
+                    val totalDebt = tdcDebtFromTxns
 
                     // 4. Map Deferred Payments for UI
                     val deferredPaymentItems = deferredPlans.mapNotNull { plan ->
@@ -163,9 +186,13 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                             "$accountLabel - $currentMonthStr/$dueDayStr"
                         } ?: "$accountLabel - Este mes"
 
+                        // Clean concept: if it looks like garbage or a timestamp, use merchant or fallback
+                        val enrichedTx = originalTxWithCat.enrichWithMsiAndClean(deferredPlans).transaction
+                        val cleanedConcept = enrichedTx.concept ?: "Compra Diferida"
+
                         DeferredPaymentItem(
                             id = plan.id,
-                            concept = originalTx.concept ?: originalTx.merchant ?: "Compra Diferida",
+                            concept = cleanedConcept,
                             categoryIcon = category?.icon ?: "Category",
                             categoryColor = category?.color ?: "#B894FF",
                             currentMonth = currentInstallment,
@@ -183,7 +210,9 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                         totalInvestments = investmentsValue,
                         tdcReminders = reminders,
                         deferredPayments = deferredPaymentItems,
-                        recentTransactions = transactions.sortedByDescending { it.transaction.createdAt }.take(6),
+                        recentTransactions = transactions.sortedByDescending { it.transaction.createdAt }.take(6).map { txWithCat ->
+                            txWithCat.enrichWithMsiAndClean(deferredPlans)
+                        },
                         categoriesBreakdown = breakdown,
                         isLoading = false
                     )

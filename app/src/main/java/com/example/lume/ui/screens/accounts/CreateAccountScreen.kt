@@ -1,8 +1,11 @@
 package com.example.lume.ui.screens.accounts
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -18,36 +21,70 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
-import com.example.lume.ui.components.ActiveGold
-import com.example.lume.ui.components.BackgroundDark
+import com.example.lume.ui.theme.ActiveGold
+import com.example.lume.ui.theme.BackgroundDark
 import com.example.lume.ui.theme.SurfaceDark
 import com.example.lume.ui.theme.TextGray
 import com.example.lume.viewmodel.CreateAccountViewModel
+import com.example.lume.viewmodel.ImportStatementViewModel
+import androidx.core.graphics.toColorInt
+import com.example.lume.ui.navigation.Screen
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CreateAccountScreen(
     navController: NavHostController,
     typeId: String,
-    viewModel: CreateAccountViewModel = viewModel()
+    viewModel: CreateAccountViewModel = viewModel(),
+    importViewModel: ImportStatementViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val importState by importViewModel.uiState.collectAsState()
+    val context = LocalContext.current
+
+    // File picker: PDF + images
+    val statementLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            // Persist readable permission across process restarts
+            context.contentResolver.takePersistableUriPermission(
+                uri,
+                android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+            )
+            val fileName = context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                cursor.moveToFirst()
+                cursor.getString(nameIndex)
+            } ?: uri.lastPathSegment ?: "archivo"
+            importViewModel.onStatementPicked(uri, fileName)
+        }
+    }
 
     LaunchedEffect(typeId) {
         viewModel.setAccountType(typeId)
     }
 
+    val navBackStackEntry = navController.currentBackStackEntry
+    val savedStateHandle = navBackStackEntry?.savedStateHandle
+    
+    LaunchedEffect(savedStateHandle) {
+        savedStateHandle?.getLiveData<String>("selected_color")?.observeForever { hex ->
+            viewModel.onColorSelect(hex)
+            savedStateHandle.remove<String>("selected_color")
+        }
+    }
+
     LaunchedEffect(uiState.saveSuccess) {
         if (uiState.saveSuccess) {
-            navController.navigate(com.example.lume.ui.navigation.Screen.ManageAccounts.route) {
-                popUpTo(com.example.lume.ui.navigation.Screen.ManageAccounts.route) { inclusive = true }
-            }
+            navController.popBackStack(Screen.ManageAccounts.route, false)
         }
     }
 
@@ -181,12 +218,36 @@ fun CreateAccountScreen(
                 )
             }
 
-            ColorSelector(uiState.selectedColor) { viewModel.onColorSelect(it) }
+            // Show statement OCR only for credit cards
+            if (uiState.accountTypeId == "CREDIT") {
+                EstadoDeCuentaSection(
+                    fileName = importState.statementFileName,
+                    status = importState.statementStatus,
+                    onPickFile = {
+                        statementLauncher.launch(arrayOf(
+                            "application/pdf",
+                            "image/jpeg",
+                            "image/png",
+                            "image/webp"
+                        ))
+                    },
+                    onClearFile = { importViewModel.onStatementCleared() }
+                )
+            }
 
-            SecurityNote()
+        ColorSelector(
+            selectedColor = uiState.selectedColor, 
+            onSelect = { viewModel.onColorSelect(it) },
+            onCustomClick = {
+                navController.navigate("custom_color_picker/${uiState.selectedColor.replace("#", "%23")}")
+            }
+        )
 
+        SecurityNote()
+
+            val txCount = importState.parsedTransactions.size
             Button(
-                onClick = { viewModel.saveAccount() },
+                onClick = { viewModel.saveAccount(importState.parsedTransactions, importViewModel::classifyCategory) },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp),
@@ -194,9 +255,23 @@ fun CreateAccountScreen(
                 colors = ButtonDefaults.buttonColors(containerColor = ActiveGold),
                 enabled = !uiState.isSaving && uiState.bankName.isNotBlank() && uiState.last4.length == 4
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Guardar Cuenta", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                    Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color.Black)
+                if (uiState.isSaving) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        color = Color.Black,
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color.Black)
+                        Text(
+                            if (txCount > 0) "Guardar e Importar ($txCount transacciones)"
+                            else "Guardar Cuenta",
+                            color = Color.Black,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp
+                        )
+                    }
                 }
             }
             
@@ -266,91 +341,4 @@ fun AccountPreviewCard(
     }
 }
 
-@Composable
-fun FormField(
-    label: String,
-    value: String,
-    onValueChange: (String) -> Unit,
-    placeholder: String,
-    modifier: Modifier = Modifier,
-    icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
-    prefix: String? = null,
-    keyboardType: KeyboardType = KeyboardType.Text,
-    enabled: Boolean = true
-) {
-    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(label, color = TextGray, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-        OutlinedTextField(
-            value = value,
-            onValueChange = onValueChange,
-            modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text(placeholder, color = TextGray.copy(alpha = 0.5f)) },
-            leadingIcon = icon?.let { { Icon(it, contentDescription = null, tint = ActiveGold) } },
-            prefix = prefix?.let { { Text(it, color = ActiveGold) } },
-            shape = RoundedCornerShape(16.dp),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedContainerColor = SurfaceDark,
-                unfocusedContainerColor = SurfaceDark,
-                disabledContainerColor = SurfaceDark,
-                focusedBorderColor = Color.Transparent,
-                unfocusedBorderColor = Color.Transparent,
-                cursorColor = ActiveGold,
-                focusedTextColor = Color.White,
-                unfocusedTextColor = Color.White
-            ),
-            keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
-            enabled = enabled,
-            singleLine = true
-        )
-    }
-}
 
-@Composable
-fun ColorSelector(selectedColor: String, onSelect: (String) -> Unit) {
-    val colors = listOf("#FFB800", "#2ECC71", "#3498DB", "#E74C3C", "#9B59B6", "#E91E63", "#F39C12", "#1abc9c")
-    
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("COLOR DE CUENTA", color = TextGray, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            colors.forEach { colorStr ->
-                val color = Color(android.graphics.Color.parseColor(colorStr))
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .background(color)
-                        .border(
-                            width = if (selectedColor == colorStr) 2.dp else 0.dp,
-                            color = Color.White,
-                            shape = CircleShape
-                        )
-                        .clickable { onSelect(colorStr) }
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun SecurityNote() {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(SurfaceDark.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
-            .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(16.dp))
-            .padding(16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        Icon(Icons.Default.Shield, contentDescription = null, tint = ActiveGold, modifier = Modifier.size(24.dp))
-        Text(
-            "Sus datos bancarios están cifrados y se almacenan únicamente en su dispositivo. Lume nunca comparte su información financiera.",
-            color = TextGray,
-            fontSize = 11.sp,
-            lineHeight = 16.sp
-        )
-    }
-}

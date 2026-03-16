@@ -25,8 +25,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
-import com.example.lume.ui.components.ActiveGold
-import com.example.lume.ui.components.BackgroundDark
+import com.example.lume.ui.theme.ActiveGold
+import com.example.lume.ui.theme.BackgroundDark
 import com.example.lume.ui.theme.SurfaceDark
 import com.example.lume.ui.theme.TextGray
 import com.example.lume.viewmodel.CategoriesViewModel
@@ -37,6 +37,7 @@ fun CreateCategoryScreen(
     navController: NavHostController,
     viewModel: CategoriesViewModel = viewModel()
 ) {
+    val uiState by viewModel.uiState.collectAsState()
     var name by remember { mutableStateOf("") }
     var selectedIcon by remember { mutableStateOf(Icons.Default.Receipt) }
     var selectedColor by remember { mutableStateOf(ActiveGold) }
@@ -112,7 +113,11 @@ fun CreateCategoryScreen(
                 Text("NOMBRE", color = TextGray, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 TextField(
                     value = name,
-                    onValueChange = { name = it },
+                    onValueChange = { 
+                        name = it
+                        viewModel.clearErrors()
+                    },
+                    isError = uiState.nameExistsError,
                     placeholder = { Text("E.g. Suscripciones", color = TextGray.copy(alpha = 0.5f)) },
                     modifier = Modifier.fillMaxWidth(),
                     colors = TextFieldDefaults.colors(
@@ -126,6 +131,14 @@ fun CreateCategoryScreen(
                     ),
                     singleLine = true
                 )
+                if (uiState.nameExistsError) {
+                    Text(
+                        "Esta categoría ya existe",
+                        color = Color.Red,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
             }
             
             Spacer(modifier = Modifier.height(32.dp))

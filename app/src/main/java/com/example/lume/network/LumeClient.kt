@@ -10,7 +10,7 @@ import com.example.lume.BuildConfig
 
 object LumeClient {
     // Stage B Backend URL (Loaded from local.properties via BuildConfig)
-    private const val BASE_URL = BuildConfig.BASE_URL
+    private val BASE_URL = BuildConfig.BASE_URL
 
     private val json = Json {
         ignoreUnknownKeys = true

@@ -29,14 +29,20 @@ import androidx.navigation.NavHostController
 import com.example.lume.data.db.CategoryEntity
 import com.example.lume.data.db.TransactionEntity
 import com.example.lume.data.db.TransactionWithCategory
-import com.example.lume.ui.components.ActiveGold
-import com.example.lume.ui.components.BackgroundDark
+import com.example.lume.ui.components.TransactionItem
+import com.example.lume.ui.theme.ActiveGold
+import com.example.lume.ui.theme.BackgroundDark
 import com.example.lume.ui.theme.SurfaceDark
 import com.example.lume.ui.theme.TextGray
 import com.example.lume.viewmodel.CategorySpend
 import com.example.lume.viewmodel.DashboardUiState
 import com.example.lume.viewmodel.DashboardViewModel
 import com.example.lume.viewmodel.TdcReminder
+import com.example.lume.utils.FormatUtils.formatCurrency
+import com.example.lume.utils.CategoryIconUtils.getCategoryIcon
+import com.example.lume.data.mappers.TransactionMappers.isMsi
+import com.example.lume.data.mappers.TransactionMappers.cleanConcept
+import com.example.lume.ui.theme.MsiPurple
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.*
@@ -61,7 +67,7 @@ fun DashboardScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
                 .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
             contentPadding = PaddingValues(bottom = 120.dp)
         ) {
             if (uiState.tdcReminders.isNotEmpty()) {
@@ -113,7 +119,12 @@ fun DashboardScreen(
                 items = uiState.recentTransactions,
                 key = { it.transaction.id } // STABLE KEY for performance
             ) { txWithCat ->
-                TransactionItem(txWithCat, isVisible = uiState.isSensitiveDataVisible)
+                TransactionItem(
+                    txWithCat = txWithCat,
+                    displayTitle = txWithCat.cleanConcept(),
+                    isMsi = txWithCat.isMsi(),
+                    isVisible = uiState.isSensitiveDataVisible
+                )
             }
             
             item { Spacer(modifier = Modifier.height(140.dp)) } // More robust than contentPadding
@@ -272,6 +283,7 @@ fun SummaryCard(
 @Composable
 fun CategorySpendingSection(breakdown: List<CategorySpend>, totalExpenses: Double, isVisible: Boolean) {
     val currentMonth = remember { SimpleDateFormat("MMMM yyyy", Locale.getDefault()).format(Date()).uppercase() }
+    val chartTotal = remember(breakdown) { breakdown.sumOf { it.amount } }
     
     Column(
         modifier = Modifier
@@ -286,10 +298,10 @@ fun CategorySpendingSection(breakdown: List<CategorySpend>, totalExpenses: Doubl
         }
 
         Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-            DonutChart(breakdown, totalExpenses)
+            DonutChart(breakdown, chartTotal)
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
-                    text = if (isVisible) formatCurrency(totalExpenses) else "***",
+                    text = if (isVisible) formatCurrency(chartTotal) else "***",
                     color = Color.White,
                     fontSize = 24.sp,
                     fontWeight = FontWeight.Bold
@@ -304,8 +316,8 @@ fun CategorySpendingSection(breakdown: List<CategorySpend>, totalExpenses: Doubl
             chunked.forEach { rowItems ->
                 Row(modifier = Modifier.fillMaxWidth()) {
                     rowItems.forEach { spend ->
-                        val percentage = remember(spend.amount, totalExpenses) { 
-                            if (totalExpenses > 0) (spend.amount / totalExpenses * 100).toInt() else 0 
+                        val percentage = remember(spend.amount, chartTotal) { 
+                            if (chartTotal > 0) (spend.amount / chartTotal * 100).toInt() else 0 
                         }
                         val categoryColor = remember(spend.category.color) { 
                             spend.category.color?.let { try { Color(android.graphics.Color.parseColor(it)) } catch(e: Exception) { ActiveGold } } ?: ActiveGold
@@ -373,70 +385,6 @@ fun RecentTransactionsHeader() {
 }
 
 @Composable
-fun TransactionItem(txWithCat: TransactionWithCategory, isVisible: Boolean) {
-    val transaction = txWithCat.transaction
-    val category = txWithCat.category
-    
-    val categoryColor = remember(category?.color) { 
-        category?.color?.let { try { Color(android.graphics.Color.parseColor(it)) } catch(e: Exception) { TextGray } } ?: TextGray 
-    }
-    
-    val categoryIcon = remember(category?.icon) { 
-        getCategoryIcon(category?.icon ?: "Category") 
-    }
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(SurfaceDark, RoundedCornerShape(16.dp))
-            .padding(16.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(categoryColor.copy(alpha = 0.1f)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                categoryIcon,
-                contentDescription = null,
-                tint = categoryColor,
-                modifier = Modifier.size(20.dp)
-            )
-        }
-        Spacer(modifier = Modifier.width(16.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(
-                    transaction.merchant ?: transaction.concept ?: "Transacción",
-                    color = Color.White,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 14.sp
-                )
-                if (transaction.id.startsWith("virtual_")) {
-                    Box(
-                        modifier = Modifier
-                            .background(Color(0xFFFFB800).copy(alpha = 0.1f), RoundedCornerShape(4.dp))
-                            .padding(horizontal = 4.dp, vertical = 2.dp)
-                    ) {
-                        Text("DIFERIDO", color = Color(0xFFFFB800), fontSize = 8.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-            Text(if (transaction.id.startsWith("virtual_")) "Pago de este mes" else transaction.dateIso, color = TextGray, fontSize = 12.sp)
-        }
-        Text(
-            text = (if (transaction.type == "egreso") "-" else "+") + (if (isVisible) formatCurrency(transaction.amount) else "***"),
-            color = if (transaction.type == "egreso") Color.White else Color(0xFF2D9F24),
-            fontWeight = FontWeight.Bold,
-            fontSize = 16.sp
-        )
-    }
-}
-
-@Composable
 fun DeferredPaymentsHeader() {
     Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
         Text("Pagos diferidos de este mes", color = Color.White, fontWeight = FontWeight.Bold)
@@ -457,7 +405,7 @@ fun DeferredPaymentCard(item: com.example.lume.viewmodel.DeferredPaymentItem, is
         modifier = Modifier
             .fillMaxWidth()
             .background(SurfaceDark, RoundedCornerShape(16.dp))
-            .padding(16.dp),
+            .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
@@ -483,12 +431,32 @@ fun DeferredPaymentCard(item: com.example.lume.viewmodel.DeferredPaymentItem, is
                     fontWeight = FontWeight.SemiBold,
                     fontSize = 14.sp
                 )
+                // MSI Label
                 Box(
                     modifier = Modifier
-                        .background(Color(0xFF608BC1).copy(alpha = 0.1f), RoundedCornerShape(4.dp))
-                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                        .background(MsiPurple.copy(alpha = 0.15f), RoundedCornerShape(12.dp))
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
                 ) {
-                    Text("${item.currentMonth}/${item.totalMonths}", color = Color(0xFF608BC1), fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        "MSI",
+                        color = MsiPurple,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                
+                // Installment Counter
+                Box(
+                    modifier = Modifier
+                        .background(MsiPurple.copy(alpha = 0.15f), RoundedCornerShape(12.dp))
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        "${item.currentMonth}/${item.totalMonths}",
+                        color = MsiPurple,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
             Text("Monto mensual", color = TextGray, fontSize = 12.sp)
@@ -543,28 +511,6 @@ fun TdcRemindersSection(reminders: List<TdcReminder>) {
                 }
             }
         }
-    }
-}
-
-private fun formatCurrency(amount: Double): String {
-    return NumberFormat.getCurrencyInstance(Locale.US).format(amount)
-}
-
-private fun getCategoryIcon(iconName: String): ImageVector {
-    val normalizedName = iconName.substringAfterLast('.')
-    return when (normalizedName) {
-        "Restaurant" -> Icons.Default.Restaurant
-        "DirectionsCar" -> Icons.Default.DirectionsCar
-        "ConfirmationNumber" -> Icons.Default.ConfirmationNumber
-        "MedicalServices" -> Icons.Default.MedicalServices
-        "Payments" -> Icons.Default.Payments
-        "Lightbulb" -> Icons.Default.Lightbulb
-        "Receipt" -> Icons.Default.Receipt
-        "ShoppingCart" -> Icons.Default.ShoppingCart
-        "Home" -> Icons.Default.Home
-        "FitnessCenter" -> Icons.Default.FitnessCenter
-        "Add" -> Icons.Default.Add
-        else -> Icons.Default.Category
     }
 }
 

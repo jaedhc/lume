@@ -21,16 +21,45 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
-import com.example.lume.ui.components.ActiveGold
-import com.example.lume.ui.components.BackgroundDark
+import com.example.lume.ui.theme.ActiveGold
+import com.example.lume.ui.theme.BackgroundDark
 import com.example.lume.ui.theme.SurfaceDark
 import com.example.lume.ui.theme.TextGray
 
 import androidx.navigation.NavHostController
 import com.example.lume.ui.navigation.Screen
+import com.example.lume.viewmodel.ProfileViewModel
 
 @Composable
-fun ProfileScreen(navController: NavHostController) {
+fun ProfileScreen(navController: NavHostController, viewModel: ProfileViewModel = androidx.lifecycle.viewmodel.compose.viewModel()) {
+    var showDeleteDialog by remember { mutableStateOf(false) }
+
+    if (showDeleteDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteDialog = false },
+            title = { Text("¿Limpiar todos los datos?", color = Color.White) },
+            text = { Text("Esta acción eliminará todas tus transacciones, cuentas y planes. No se puede deshacer.", color = TextGray) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.clearAllData {
+                            showDeleteDialog = false
+                        }
+                    }
+                ) {
+                    Text("LIMPIAR TODO", color = Color(0xFFF87171), fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteDialog = false }) {
+                    Text("CANCELAR", color = Color.White)
+                }
+            },
+            containerColor = SurfaceDark,
+            textContentColor = Color.White
+        )
+    }
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -75,6 +104,14 @@ fun ProfileScreen(navController: NavHostController) {
                     title = "Exportar Datos",
                     subtitle = "CSV, JSON, PDF",
                     trailingIcon = Icons.Default.Download
+                )
+                Divider(color = Color(0xFF2C2C35), thickness = 1.dp)
+                SettingsNavigationItem(
+                    icon = Icons.Default.DeleteForever,
+                    title = "Limpiar todos los datos",
+                    subtitle = "Borrar transacciones y cuentas",
+                    trailingIcon = Icons.Default.Warning,
+                    onClick = { showDeleteDialog = true }
                 )
             }
             Spacer(modifier = Modifier.height(64.dp))

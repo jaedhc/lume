@@ -22,8 +22,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
-import com.example.lume.ui.components.ActiveGold
-import com.example.lume.ui.components.BackgroundDark
+import com.example.lume.ui.theme.ActiveGold
+import com.example.lume.ui.theme.BackgroundDark
 import com.example.lume.ui.theme.SurfaceDark
 import com.example.lume.ui.theme.TextGray
 
@@ -114,7 +114,13 @@ fun SelectAccountTypeScreen(navController: NavHostController) {
                 Button(
                     onClick = { 
                         selectedType?.let { typeId ->
-                            navController.navigate("create_account/$typeId")
+                            if (typeId == "CASH") {
+                                navController.navigate(com.example.lume.ui.navigation.Screen.AddCashAccount.route)
+                            } else if (typeId == "INVESTMENT" || typeId == "SAVINGS") {
+                                navController.navigate(com.example.lume.ui.navigation.Screen.AddInvestmentAccount.route)
+                            } else {
+                                navController.navigate("create_account/$typeId")
+                            }
                         }
                     },
                     modifier = Modifier

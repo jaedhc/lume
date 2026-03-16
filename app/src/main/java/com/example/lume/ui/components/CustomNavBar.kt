@@ -23,20 +23,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.lume.ui.navigation.Screen
 
-// Definición de tus colores exactos
-val BackgroundDark = Color(0xFF0B0B0F)
-val ActiveGold = Color(0xFFFFB800)
-val InactiveGray = Color(0xFF64748B)
+import com.example.lume.ui.theme.BackgroundDark
+import com.example.lume.ui.theme.ActiveGold
+import com.example.lume.ui.theme.InactiveGray
 
 @Composable
 fun FinanceBottomBar(
     currentRoute: String = "dashboard",
     onNavigate: (String) -> Unit = {}
 ) {
-    // Definición de colores locales para precisión
-    val backgroundDark = Color(0xFF0B0B0F)
-    val activeGold = Color(0xFFFFB800)
-    val inactiveGray = Color(0xFF64748B)
+    // Using colors from theme
 
     Box(
         modifier = Modifier
@@ -55,9 +51,9 @@ fun FinanceBottomBar(
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(
-                        activeGold.copy(alpha = 0.2f), // Más intenso en el centro
-                        activeGold.copy(alpha = 0.1f),
-                        activeGold.copy(alpha = 0.05f),// Se desvanece
+                        ActiveGold.copy(alpha = 0.2f), // Más intenso en el centro
+                        ActiveGold.copy(alpha = 0.1f),
+                        ActiveGold.copy(alpha = 0.05f),// Se desvanece
                         Color.Transparent              // Desaparece
                     ),
                     center = center,
@@ -72,7 +68,7 @@ fun FinanceBottomBar(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(86.dp),
-            color = backgroundDark,
+            color = BackgroundDark,
             tonalElevation = 0.dp
         ) {
             Row(
@@ -119,7 +115,7 @@ fun FinanceBottomBar(
             modifier = Modifier
                 .offset(y = (-40).dp)
                 .size(64.dp)
-                .background(activeGold, shape = CircleShape)
+                .background(ActiveGold, shape = CircleShape)
                 .clickable { onNavigate("scan") },
             contentAlignment = Alignment.Center
         ) {
