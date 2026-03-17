@@ -6,14 +6,16 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.google.ksp)
+    alias(libs.plugins.google.services)
+    alias(libs.plugins.firebase.crashlytics)
 }
 
 android {
-    namespace = "com.example.lume"
+    namespace = "com.jaedhc.lume"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.example.lume"
+        applicationId = "com.jaedhc.lume"
         minSdk = 24
         targetSdk = 35
         versionCode = 1
@@ -118,4 +120,8 @@ dependencies {
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
     implementation(libs.reorderable)
+
+    // --- Firebase & Crashlytics ---
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.crashlytics)
 }

@@ -11,13 +11,13 @@
         android:fillColor="#0B0E14"
         android:pathData="M 0,0 L 600,0 L 600,600 L 0,600 Z" />
 
-    <!-- First light gradient (simulating blurred ellipse at 450, 37) -->
+    <!-- First light gradient (simulating blurred ellipse at 396, 218) -->
     <path android:pathData="M 0,0 L 600,0 L 600,600 L 0,600 Z">
         <aapt:attr name="android:fillColor">
             <gradient
-                android:centerX="450.697"
-                android:centerY="36.9999"
-                android:gradientRadius="400"
+                android:centerX="396.697"
+                android:centerY="218.0"
+                android:gradientRadius="450"
                 android:type="radial">
                 <item android:offset="0.0" android:color="#6B13203B"/>
                 <item android:offset="1.0" android:color="#0013203B"/>
@@ -25,13 +25,13 @@
         </aapt:attr>
     </path>
 
-    <!-- Second light gradient (simulating blurred ellipse at 95, 453) -->
+    <!-- Second light gradient (simulating blurred ellipse at 241, 358) -->
     <path android:pathData="M 0,0 L 600,0 L 600,600 L 0,600 Z">
         <aapt:attr name="android:fillColor">
             <gradient
-                android:centerX="95.6968"
-                android:centerY="453.0"
-                android:gradientRadius="350"
+                android:centerX="241.697"
+                android:centerY="358.0"
+                android:gradientRadius="400"
                 android:type="radial">
                 <item android:offset="0.0" android:color="#293B2E13"/>
                 <item android:offset="1.0" android:color="#003B2E13"/>
