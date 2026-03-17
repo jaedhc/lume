@@ -5,14 +5,17 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.google.ksp)
+    alias(libs.plugins.google.services)
+    alias(libs.plugins.firebase.crashlytics)
 }
 
 android {
-    namespace = "com.example.lume"
+    namespace = "com.jaedhc.lume"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.example.lume"
+        applicationId = "com.jaedhc.lume"
         minSdk = 24
         targetSdk = 35
         versionCode = 1
@@ -79,6 +82,11 @@ dependencies {
 
     // --- Testing ---
     testImplementation(libs.junit)
+    testImplementation(libs.mockk)
+    testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.androidx.arch.core.testing)
+    testImplementation(libs.turbine)
+
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
@@ -106,4 +114,14 @@ dependencies {
     implementation(libs.retrofit.kotlin.serialization.converter)
     implementation(libs.okhttp)
     implementation(libs.okhttp.logging.interceptor)
+
+    // --- Database (Room) ---
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    ksp(libs.androidx.room.compiler)
+    implementation(libs.reorderable)
+
+    // --- Firebase & Crashlytics ---
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.crashlytics)
 }
